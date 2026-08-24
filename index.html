@@ -1,0 +1,87 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Home Workout Generator</title>
+<link rel="stylesheet" href="style.css">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Fraunces:ital,opsz,wght@0,9..144,500;0,9..144,600;1,9..144,500&family=Poppins:wght@500;600;700&family=Karla:wght@400;500;600;700&display=swap" rel="stylesheet">
+</head>
+<body>
+<div class="app">
+
+  <header class="app-header">
+    <h1>home workout</h1>
+    <p class="subtitle">Build a workout around what you have</p>
+  </header>
+
+  <!-- Setup screen -->
+  <main id="setup-screen" class="screen">
+
+    <section class="field">
+      <h2>Equipment</h2>
+      <div class="chip-group" id="equipment-group" data-multi="true">
+        <button type="button" class="chip" data-value="bodyweight">🤸‍♀️ Bodyweight only</button>
+        <button type="button" class="chip" data-value="dumbbells">🏋️‍♀️ Dumbbells</button>
+        <button type="button" class="chip" data-value="bands">🪢 Resistance Bands</button>
+        <button type="button" class="chip" data-value="kettlebell">🔔 Kettlebell</button>
+        <button type="button" class="chip" data-value="bench">🪑 Bench / Chair</button>
+        <button type="button" class="chip" data-value="ankleWeights">🦵 Ankle Weights</button>
+      </div>
+    </section>
+
+    <section class="field">
+      <h2>Duration</h2>
+      <div class="chip-group" id="duration-group" data-multi="false">
+        <button type="button" class="chip" data-value="10">10 min</button>
+        <button type="button" class="chip" data-value="20">20 min</button>
+        <button type="button" class="chip" data-value="30">30 min</button>
+        <button type="button" class="chip" data-value="45">45 min</button>
+      </div>
+    </section>
+
+    <section class="field">
+      <h2>Focus</h2>
+      <div class="chip-group" id="focus-group" data-multi="false">
+        <button type="button" class="chip" data-value="fullBody">🧍‍♀️ Full Body</button>
+        <button type="button" class="chip" data-value="upperBody">💪 Upper Body</button>
+        <button type="button" class="chip" data-value="lowerBody">🦵 Lower Body</button>
+        <button type="button" class="chip" data-value="core">🔥 Core</button>
+        <button type="button" class="chip" data-value="cardio">🏃‍♀️ Cardio</button>
+      </div>
+    </section>
+
+    <section class="field">
+      <h2>Fitness Level</h2>
+      <div class="chip-group" id="level-group" data-multi="false">
+        <button type="button" class="chip" data-value="beginner">Beginner</button>
+        <button type="button" class="chip" data-value="intermediate">Intermediate</button>
+        <button type="button" class="chip" data-value="advanced">Advanced</button>
+      </div>
+    </section>
+
+    <p class="hint" id="setup-hint">Select an option in every section to continue.</p>
+
+    <button type="button" id="generate-btn" class="btn btn-primary" disabled>Generate Workout</button>
+  </main>
+
+  <!-- Result screen -->
+  <main id="result-screen" class="screen hidden">
+    <h2 class="result-title">Your Workout</h2>
+
+    <ul class="exercise-list" id="exercise-list"></ul>
+
+    <div class="result-actions">
+      <button type="button" id="regenerate-btn" class="btn btn-primary">Generate Another Workout</button>
+      <button type="button" id="start-over-btn" class="btn btn-secondary">Start Over</button>
+    </div>
+  </main>
+
+</div>
+
+<script src="exercises.js"></script>
+<script src="app.js"></script>
+</body>
+</html>
