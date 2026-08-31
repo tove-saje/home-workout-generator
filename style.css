@@ -198,6 +198,10 @@ body {
   text-transform: capitalize;
 }
 
+.equipment-tag {
+  text-transform: lowercase;
+}
+
 .finisher-tag {
   text-transform: uppercase;
   letter-spacing: 0.05em;

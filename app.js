@@ -22,6 +22,19 @@ const DURATION_PLAN = {
   45: { main: 9, finisher: 1 },
 };
 
+// Bodyweight exercises are always in the pool as a fallback, but should stay a
+// small supplement, not the bulk of the workout — cap how many can appear.
+const BODYWEIGHT_CAP_BY_DURATION = { 10: 1, 20: 2, 30: 2, 45: 2 };
+
+const EQUIPMENT_LABELS = {
+  bodyweight: "bodyweight",
+  dumbbells: "dumbbells",
+  bands: "resistance band",
+  kettlebell: "kettlebell",
+  bench: "bench / chair",
+  ankleWeights: "ankle weights",
+};
+
 // Groups exercises by underlying movement so we don't stack near-duplicates
 // (e.g. Push-Up, Incline Push-Up, Decline Push-Up all read as "pushup").
 const PATTERN_KEYWORDS = [
@@ -158,9 +171,36 @@ function filterExercisePool() {
   });
 }
 
-// Round-robins across muscle groups, and within each group prefers the next
-// exercise whose movement pattern hasn't been used yet in this workout.
-function pickMain(pool, groups, count, usedPatterns) {
+// Ranks a candidate for picking: equipment the user actually selected always
+// beats a bodyweight fallback, and an unused movement pattern always beats a repeat.
+function rankCandidate(exercise, usedPatterns) {
+  const isBodyweight = exercise.equipment === "bodyweight";
+  const isFresh = !usedPatterns.has(getPattern(exercise));
+  if (!isBodyweight && isFresh) return 0;
+  if (!isBodyweight && !isFresh) return 1;
+  if (isBodyweight && isFresh) return 2;
+  return 3;
+}
+
+function pickBest(list, usedPatterns) {
+  let bestIndex = 0;
+  let bestRank = Infinity;
+  list.forEach((exercise, i) => {
+    const rank = rankCandidate(exercise, usedPatterns);
+    if (rank < bestRank) {
+      bestRank = rank;
+      bestIndex = i;
+    }
+  });
+  const [chosen] = list.splice(bestIndex, 1);
+  return chosen;
+}
+
+// Round-robins across muscle groups. Within each group it prefers the user's
+// selected equipment over a bodyweight fallback, and a fresh movement pattern
+// over a repeat — and once the bodyweight cap is hit, bodyweight exercises
+// stop being offered at all.
+function pickMain(pool, groups, count, usedPatterns, bodyweightTracker, bodyweightCap) {
   const byGroup = {};
   groups.forEach((group) => {
     byGroup[group] = shuffle(pool.filter((exercise) => exercise.muscleGroup === group));
@@ -172,12 +212,17 @@ function pickMain(pool, groups, count, usedPatterns) {
   while (picked.length < count && order.length > 0) {
     for (const group of order) {
       if (picked.length >= count) break;
+
+      if (bodyweightTracker.used >= bodyweightCap) {
+        byGroup[group] = byGroup[group].filter((exercise) => exercise.equipment !== "bodyweight");
+      }
       const list = byGroup[group];
-      let index = list.findIndex((exercise) => !usedPatterns.has(getPattern(exercise)));
-      if (index === -1) index = 0;
-      const [chosen] = list.splice(index, 1);
+      if (list.length === 0) continue;
+
+      const chosen = pickBest(list, usedPatterns);
       picked.push(chosen);
       usedPatterns.add(getPattern(chosen));
+      if (chosen.equipment === "bodyweight") bodyweightTracker.used++;
     }
     order = order.filter((group) => byGroup[group].length > 0);
   }
@@ -186,9 +231,13 @@ function pickMain(pool, groups, count, usedPatterns) {
 }
 
 // Prefers a movement pattern not seen yet in this workout above all else, then
-// a cardio-tagged move, then the hardest option — a capstone burst to close things out.
-function pickFinisher(pool, count, usedPatterns, usedNames) {
-  const candidates = shuffle(pool.filter((exercise) => !usedNames.has(exercise.name)));
+// a cardio-tagged move, then the hardest option — a capstone burst to close
+// things out. Also respects the bodyweight cap set by the main picks.
+function pickFinisher(pool, count, usedPatterns, usedNames, bodyweightTracker, bodyweightCap) {
+  let candidates = shuffle(pool.filter((exercise) => !usedNames.has(exercise.name)));
+  if (bodyweightTracker.used >= bodyweightCap) {
+    candidates = candidates.filter((exercise) => exercise.equipment !== "bodyweight");
+  }
 
   candidates.sort((a, b) => {
     const aUsed = usedPatterns.has(getPattern(a)) ? 1 : 0;
@@ -201,7 +250,11 @@ function pickFinisher(pool, count, usedPatterns, usedNames) {
     return LEVEL_RANK[b.difficulty] - LEVEL_RANK[a.difficulty];
   });
 
-  return candidates.slice(0, count);
+  const chosen = candidates.slice(0, count);
+  chosen.forEach((exercise) => {
+    if (exercise.equipment === "bodyweight") bodyweightTracker.used++;
+  });
+  return chosen;
 }
 
 function buildWorkout() {
@@ -209,13 +262,22 @@ function buildWorkout() {
   const pool = filterExercisePool();
   const relevantGroups = FOCUS_MUSCLE_GROUPS[state.focus];
   const usedPatterns = new Set();
+  const bodyweightTracker = { used: 0 };
+  const bodyweightCap = BODYWEIGHT_CAP_BY_DURATION[state.duration];
 
-  const main = pickMain(pool, relevantGroups, plan.main, usedPatterns);
+  const main = pickMain(pool, relevantGroups, plan.main, usedPatterns, bodyweightTracker, bodyweightCap);
   const usedNames = new Set(main.map((exercise) => exercise.name));
   main.forEach((exercise) => usedPatterns.add(getPattern(exercise)));
 
   const finisherPool = pool.filter((exercise) => !usedNames.has(exercise.name));
-  const finisher = pickFinisher(finisherPool, plan.finisher, usedPatterns, usedNames);
+  const finisher = pickFinisher(
+    finisherPool,
+    plan.finisher,
+    usedPatterns,
+    usedNames,
+    bodyweightTracker,
+    bodyweightCap
+  );
 
   return { main, finisher };
 }
@@ -243,13 +305,19 @@ function renderWorkout(main, finisher) {
     li.querySelector(".exercise-sets").textContent = badge;
 
     const muscleEl = li.querySelector(".exercise-muscle");
-    muscleEl.textContent = exercise.muscleGroup;
+    muscleEl.textContent = exercise.muscleGroup + " · ";
+
+    const equipmentTag = document.createElement("span");
+    equipmentTag.className = "equipment-tag";
+    equipmentTag.textContent = EQUIPMENT_LABELS[exercise.equipment];
+    muscleEl.appendChild(equipmentTag);
+
     if (isFinisher) {
-      muscleEl.textContent += " · ";
-      const tag = document.createElement("span");
-      tag.className = "finisher-tag";
-      tag.textContent = "Finisher";
-      muscleEl.appendChild(tag);
+      muscleEl.appendChild(document.createTextNode(" · "));
+      const finisherTag = document.createElement("span");
+      finisherTag.className = "finisher-tag";
+      finisherTag.textContent = "Finisher";
+      muscleEl.appendChild(finisherTag);
     }
 
     exerciseList.appendChild(li);
