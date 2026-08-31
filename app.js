@@ -263,7 +263,11 @@ function buildWorkout() {
   const relevantGroups = FOCUS_MUSCLE_GROUPS[state.focus];
   const usedPatterns = new Set();
   const bodyweightTracker = { used: 0 };
-  const bodyweightCap = BODYWEIGHT_CAP_BY_DURATION[state.duration];
+  // The cap only limits bodyweight as an unrequested fallback. If the user
+  // actually selected Bodyweight, it's real equipment, not a filler — no cap.
+  const bodyweightCap = state.equipment.has("bodyweight")
+    ? Infinity
+    : BODYWEIGHT_CAP_BY_DURATION[state.duration];
 
   const main = pickMain(pool, relevantGroups, plan.main, usedPatterns, bodyweightTracker, bodyweightCap);
   const usedNames = new Set(main.map((exercise) => exercise.name));
