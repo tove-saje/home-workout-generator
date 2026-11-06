@@ -183,23 +183,23 @@ function rankCandidate(exercise, usedPatterns) {
 }
 
 function pickBest(list, usedPatterns) {
-  let bestIndex = 0;
+  let best = list[0];
   let bestRank = Infinity;
-  list.forEach((exercise, i) => {
+  list.forEach((exercise) => {
     const rank = rankCandidate(exercise, usedPatterns);
     if (rank < bestRank) {
       bestRank = rank;
-      bestIndex = i;
+      best = exercise;
     }
   });
-  const [chosen] = list.splice(bestIndex, 1);
-  return chosen;
+  return best;
 }
 
 // Round-robins across muscle groups. Within each group it prefers the user's
 // selected equipment over a bodyweight fallback, and a fresh movement pattern
-// over a repeat — and once the bodyweight cap is hit, bodyweight exercises
-// stop being offered at all.
+// over a repeat. The bodyweight cap is a soft limit: once it's reached,
+// bodyweight is skipped while anything else is left, but if the workout
+// can't otherwise be filled the cap is relaxed so it never comes up short.
 function pickMain(pool, groups, count, usedPatterns, bodyweightTracker, bodyweightCap) {
   const byGroup = {};
   groups.forEach((group) => {
@@ -207,24 +207,32 @@ function pickMain(pool, groups, count, usedPatterns, bodyweightTracker, bodyweig
   });
 
   const picked = [];
-  let order = groups.filter((group) => byGroup[group].length > 0);
+  let capRelaxed = false;
 
-  while (picked.length < count && order.length > 0) {
-    for (const group of order) {
+  while (picked.length < count) {
+    let pickedThisRound = false;
+
+    for (const group of groups) {
       if (picked.length >= count) break;
 
-      if (bodyweightTracker.used >= bodyweightCap) {
-        byGroup[group] = byGroup[group].filter((exercise) => exercise.equipment !== "bodyweight");
-      }
-      const list = byGroup[group];
-      if (list.length === 0) continue;
+      const capped = !capRelaxed && bodyweightTracker.used >= bodyweightCap;
+      const candidates = capped
+        ? byGroup[group].filter((exercise) => exercise.equipment !== "bodyweight")
+        : byGroup[group];
+      if (candidates.length === 0) continue;
 
-      const chosen = pickBest(list, usedPatterns);
+      const chosen = pickBest(candidates, usedPatterns);
+      byGroup[group].splice(byGroup[group].indexOf(chosen), 1);
       picked.push(chosen);
       usedPatterns.add(getPattern(chosen));
       if (chosen.equipment === "bodyweight") bodyweightTracker.used++;
+      pickedThisRound = true;
     }
-    order = order.filter((group) => byGroup[group].length > 0);
+
+    if (!pickedThisRound) {
+      if (capRelaxed) break;
+      capRelaxed = true;
+    }
   }
 
   return picked;
@@ -232,14 +240,16 @@ function pickMain(pool, groups, count, usedPatterns, bodyweightTracker, bodyweig
 
 // Prefers a movement pattern not seen yet in this workout above all else, then
 // a cardio-tagged move, then the hardest option — a capstone burst to close
-// things out. Also respects the bodyweight cap set by the main picks.
+// things out. Bodyweight past the cap is ranked last, not removed.
 function pickFinisher(pool, count, usedPatterns, usedNames, bodyweightTracker, bodyweightCap) {
-  let candidates = shuffle(pool.filter((exercise) => !usedNames.has(exercise.name)));
-  if (bodyweightTracker.used >= bodyweightCap) {
-    candidates = candidates.filter((exercise) => exercise.equipment !== "bodyweight");
-  }
+  const candidates = shuffle(pool.filter((exercise) => !usedNames.has(exercise.name)));
+  const overCap = (exercise) =>
+    exercise.equipment === "bodyweight" && bodyweightTracker.used >= bodyweightCap ? 1 : 0;
 
   candidates.sort((a, b) => {
+    const capDiff = overCap(a) - overCap(b);
+    if (capDiff !== 0) return capDiff;
+
     const aUsed = usedPatterns.has(getPattern(a)) ? 1 : 0;
     const bUsed = usedPatterns.has(getPattern(b)) ? 1 : 0;
     if (aUsed !== bUsed) return aUsed - bUsed;
