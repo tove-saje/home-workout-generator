@@ -8,11 +8,23 @@ const FOCUS_MUSCLE_GROUPS = {
 
 const LEVEL_RANK = { beginner: 0, intermediate: 1, advanced: 2 };
 
-const SETS_REPS_BY_LEVEL = {
-  beginner: { sets: 2, reps: 10 },
-  intermediate: { sets: 3, reps: 12 },
-  advanced: { sets: 4, reps: 15 },
+const STRENGTH_DOSE = { beginner: "2 × 10", intermediate: "3 × 12", advanced: "4 × 15" };
+
+// What shows in the pill on each card, by style and fitness level.
+const DOSE_BY_STYLE = {
+  strength: STRENGTH_DOSE,
+  pilates: STRENGTH_DOSE,
+  lowImpact: { beginner: "2 × 12", intermediate: "2 × 15", advanced: "3 × 15" },
+  barre: { beginner: "2 × 15", intermediate: "3 × 20", advanced: "3 × 25" },
+  hiit: { beginner: "30s on · 30s off", intermediate: "40s on · 20s off", advanced: "45s on · 15s off" },
+  mobility: { beginner: "2 × 30 sec", intermediate: "2 × 40 sec", advanced: "3 × 40 sec" },
 };
+
+// In a "Mix" workout each exercise uses its own main style (the first one listed).
+function doseFor(exercise) {
+  const style = state.style === "mix" ? exercise.styles[0] : state.style;
+  return DOSE_BY_STYLE[style][state.level];
+}
 
 // How many exercises each phase gets, by chosen duration.
 const DURATION_PLAN = {
@@ -79,6 +91,7 @@ const PATTERN_KEYWORDS = [
 ];
 
 function getPattern(exercise) {
+  if (exercise.pattern) return exercise.pattern;
   const name = exercise.name.toLowerCase();
   for (const [keyword, pattern] of PATTERN_KEYWORDS) {
     if (name.includes(keyword)) return pattern;
@@ -90,6 +103,7 @@ const state = {
   equipment: new Set(),
   duration: null,
   focus: null,
+  style: null,
   level: null,
 };
 
@@ -128,7 +142,7 @@ function setupChipGroup(groupId, onChange) {
 
 function updateGenerateButtonState() {
   const ready =
-    state.equipment.size > 0 && state.duration && state.focus && state.level;
+    state.equipment.size > 0 && state.duration && state.focus && state.style && state.level;
   generateBtn.disabled = !ready;
   setupHint.classList.toggle("hidden", ready);
 }
@@ -152,6 +166,12 @@ setupChipGroup("focus-group", (group) => {
   updateGenerateButtonState();
 });
 
+setupChipGroup("style-group", (group) => {
+  const selected = group.querySelector(".chip.selected");
+  state.style = selected ? selected.dataset.value : null;
+  updateGenerateButtonState();
+});
+
 setupChipGroup("level-group", (group) => {
   const selected = group.querySelector(".chip.selected");
   state.level = selected ? selected.dataset.value : null;
@@ -167,7 +187,8 @@ function filterExercisePool() {
       exercise.equipment === "bodyweight" || state.equipment.has(exercise.equipment);
     const muscleOk = relevantGroups.includes(exercise.muscleGroup);
     const levelOk = LEVEL_RANK[exercise.difficulty] <= maxLevelRank;
-    return equipmentOk && muscleOk && levelOk;
+    const styleOk = state.style === "mix" || exercise.styles.includes(state.style);
+    return equipmentOk && muscleOk && levelOk && styleOk;
   });
 }
 
@@ -297,12 +318,11 @@ function buildWorkout() {
 }
 
 function renderWorkout(main, finisher) {
-  const { sets, reps } = SETS_REPS_BY_LEVEL[state.level];
   exerciseList.innerHTML = "";
 
   const items = [
-    ...main.map((exercise) => ({ exercise, badge: `${sets} × ${reps}`, isFinisher: false })),
-    ...finisher.map((exercise) => ({ exercise, badge: `${sets} × ${reps}`, isFinisher: true })),
+    ...main.map((exercise) => ({ exercise, badge: doseFor(exercise), isFinisher: false })),
+    ...finisher.map((exercise) => ({ exercise, badge: doseFor(exercise), isFinisher: true })),
   ];
 
   items.forEach(({ exercise, badge, isFinisher }) => {
@@ -350,6 +370,7 @@ function resetToSetup() {
   state.equipment = new Set();
   state.duration = null;
   state.focus = null;
+  state.style = null;
   state.level = null;
 
   document.querySelectorAll(".chip.selected").forEach((chip) => chip.classList.remove("selected"));
